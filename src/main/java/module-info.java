@@ -6,6 +6,7 @@ module com.packetboard.packetboard {
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.bootstrapfx.core;
     requires kaitai.struct.runtime;
+    requires org.apache.logging.log4j.core;
 
     opens com.packetboard.packetboard to javafx.fxml;
     exports com.packetboard.packetboard;
