@@ -47,6 +47,12 @@ public class PacketParser {
         public static final int IEEE802_11 = 22; // WIFI
     }
 
+    /**
+     * Parse a given pcap file.
+     * @param fileName Path to the file
+     * @param doSNI Look up SNI for each dst IP?
+     * @param dorDNS Look up rDNS for each dst IP?
+     */
     public void load(String fileName, Boolean doSNI, Boolean dorDNS) {
         try {
             data = Pcap.fromFile(fileName);
@@ -72,6 +78,12 @@ public class PacketParser {
         }
     }
 
+    /**
+     * When link-type of pcap is set to Ethernet. Parse the packet.
+     * @param ethFrame Ethernet frame
+     * @param doSNI Look up SNI for each dst IP?
+     * @param dorDNS Look up rDNS for each dst IP?
+     */
     private void parseEther(EthernetFrame ethFrame, Boolean doSNI, Boolean dorDNS) {
         // Check the type of the next packet
         switch (ethFrame.etherType()) {
@@ -111,6 +123,18 @@ public class PacketParser {
                 String dstMAC6 = parseMac(ethFrame.dstMac());
                 var size6 = ipv6Packet.payloadLength();
 
+                //SNI
+                if (doSNI && sniRecords.get(destIPv6) == null) {
+                    var sni = getSNI(destIPv6);
+                    sniRecords.put(destIPv6, sni);
+                }
+
+                // rDNS
+                if (dorDNS && rDNSRecords.get(destIPv6) == null) {
+                    var rDNS = getRDNS(destIPv6);
+                    rDNSRecords.put(destIPv6, rDNS);
+                }
+
                 // Add stats from the packet
                 registerPacket(srcIPv6, destIPv6, srcMAC6, dstMAC6, size6);
                 break;
@@ -141,6 +165,7 @@ public class PacketParser {
             socks.startHandshake();
             var session = socks.getSession();
 
+            // Reads certs
             var certs = session.getPeerCertificates();
             var cert = (X509Certificate) certs[0];
             var altNames = cert.getSubjectAlternativeNames();
@@ -163,6 +188,14 @@ public class PacketParser {
         }
     }
 
+    /**
+     * Collect stats from a parsed packet.
+     * @param srcIPv4 src IP, can be IPv6, from pcap.
+     * @param destIPv4 dst IP, can be IPv6, from pcap.
+     * @param srcMAC src MAC from pcap.
+     * @param dstMAC dst MAC from pcap.
+     * @param size size of the packet as described in IP header.
+     */
     private void registerPacket(String srcIPv4, String destIPv4, String srcMAC, String dstMAC, int size) {
         // Register the packet
         if (localTalkers.get(srcIPv4) == null) {
@@ -218,6 +251,9 @@ public class PacketParser {
         return String.format("%s:%s:%s:%s:%s:%s", a,b,c,d,e,f);
     }
 
+    /**
+     * Our insecure trust manager. Trust everything.
+     */
     private class SniTrustManager implements X509TrustManager {
 
         @Override

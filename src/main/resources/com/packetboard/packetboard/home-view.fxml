@@ -3,12 +3,13 @@
 <?import javafx.scene.control.Menu?>
 <?import javafx.scene.control.MenuBar?>
 <?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
 
-
-<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/19" xmlns:fx="http://javafx.com/fxml/1">
+<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/19" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.packetboard.packetboard.HomeController">
    <children>
       <BorderPane prefHeight="400.0" prefWidth="600.0">
          <top>
@@ -37,6 +38,21 @@
                </children>
             </HBox>
          </top>
+         <center>
+            <ScrollPane prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
+              <content>
+                <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="373.0" prefWidth="598.0">
+                     <children>
+                        <BorderPane prefHeight="374.0" prefWidth="600.0">
+                           <top>
+                              <VBox fx:id="graphsBox" prefHeight="374.0" prefWidth="600.0" BorderPane.alignment="CENTER" />
+                           </top>
+                        </BorderPane>
+                     </children>
+                  </AnchorPane>
+              </content>
+            </ScrollPane>
+         </center>
       </BorderPane>
    </children>
 </AnchorPane>
