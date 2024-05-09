@@ -10,28 +10,31 @@ import org.apache.logging.log4j.Logger;
 import javax.net.ssl.*;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.TreeMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class PacketParser {
     private Pcap data;
-    private final TreeMap<String, Integer> localTalkers = new TreeMap<>(); // IP: Packet count.
-    private final TreeMap<String, String> addressResolution = new TreeMap<>(); // IP: MAC
-    private final TreeMap<String, Long> dataCount = new TreeMap<>(); // dstIP: Data(bytes)
-    private final TreeMap<String, ArrayList> sniRecords = new TreeMap<>(); // dstIP: Arraylist(SNI(domain name))
-    private final TreeMap<String, String> rDNSRecords = new TreeMap<>(); // IP: rDNS
-    private Integer ipv4Counts = 0;
-    private Integer ipv6Counts = 0;
+    private final ConcurrentHashMap<String, Integer> localTalkers = new ConcurrentHashMap<>(); // IP: Packet count.
+    private final ConcurrentHashMap<String, Long> localTalkersData = new ConcurrentHashMap<>(); // IP: data(bytes)
+    private final ConcurrentHashMap<String, String> addressResolution = new ConcurrentHashMap<>(); // IP: MAC
+    private final ConcurrentHashMap<String, Long> dataCount = new ConcurrentHashMap<>(); // dstIP: Data(bytes)
+    private final ConcurrentHashMap<String, ArrayList> sniRecords = new ConcurrentHashMap<>(); // dstIP: Arraylist(SNI(domain name))
+    private final ConcurrentHashMap<String, String> rDNSRecords = new ConcurrentHashMap<>(); // IP: rDNS
+    private final ConcurrentHashMap<String, Long> sniDataCount = new ConcurrentHashMap<>(); // SNI: Data(bytes)
+    private AtomicInteger ipv4Counts = new AtomicInteger(0);
+    private AtomicInteger ipv6Counts = new AtomicInteger(0);
     private Logger logger = LogManager.getLogger(PacketParser.class);
+    private AtomicBoolean doSNI, dorDNS = new AtomicBoolean(false);
 
     /**
      * Header length of each protocol.
@@ -49,30 +52,45 @@ public class PacketParser {
 
     /**
      * Parse a given pcap file.
+     *
      * @param fileName Path to the file
-     * @param doSNI Look up SNI for each dst IP?
-     * @param dorDNS Look up rDNS for each dst IP?
+     * @param doSNI    Look up SNI for each dst IP?
+     * @param dorDNS   Look up rDNS for each dst IP?
      */
     public void load(String fileName, Boolean doSNI, Boolean dorDNS) {
         try {
+            // register settings
+            this.doSNI = new AtomicBoolean(doSNI);
+            this.dorDNS = new AtomicBoolean(dorDNS);
             data = Pcap.fromFile(fileName);
             // check link-type.
             var linkType = data.hdr().network();
 
             // Create thread pool
-            ExecutorService executors = Executors.newFixedThreadPool(4);
+            ExecutorService executors = Executors.newFixedThreadPool(32);
             ArrayList<Future> futures = new ArrayList<>();
             data.packets().forEach(packet -> {
                 futures.add(executors.submit(() -> {
                     switch (linkType) {
                         case ETHERNET:
                             EthernetFrame ethFrame = (EthernetFrame) packet.body();
-                            parseEther(ethFrame, doSNI, dorDNS);
+                            parseEther(ethFrame);
                             break;
                     }
                     return;
+
                 }));
             });
+
+            // Wait for all threads to finish
+            for (Future future : futures) {
+                try {
+                    future.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    logger.error("Error while parsing packet");
+                    logger.error(e);
+                }
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -80,15 +98,14 @@ public class PacketParser {
 
     /**
      * When link-type of pcap is set to Ethernet. Parse the packet.
+     *
      * @param ethFrame Ethernet frame
-     * @param doSNI Look up SNI for each dst IP?
-     * @param dorDNS Look up rDNS for each dst IP?
      */
-    private void parseEther(EthernetFrame ethFrame, Boolean doSNI, Boolean dorDNS) {
+    private void parseEther(EthernetFrame ethFrame) {
         // Check the type of the next packet
         switch (ethFrame.etherType()) {
             case IPV4:
-                ipv4Counts++;
+                ipv4Counts.incrementAndGet();
 
                 Ipv4Packet ipv4Packet = (Ipv4Packet) ethFrame.body();
                 String destIPv4 = parseIPv4(ipv4Packet.dstIpAddr());
@@ -98,15 +115,27 @@ public class PacketParser {
                 var size = ipv4Packet.totalLength();
 
                 // SNI
-                if (doSNI && sniRecords.get(destIPv4) == null) {
+                if (doSNI.get() && sniRecords.get(destIPv4) == null && !isLocalIPv4(destIPv4)) {
                     var sni = getSNI(destIPv4);
-                    sniRecords.put(destIPv4, sni);
+                    if (sni != null) {
+                        sniRecords.put(destIPv4, sni);
+                    }
+                }
+                if (doSNI.get() && sniRecords.get(srcIPv4) == null && !isLocalIPv4(srcIPv4)) {
+                    var sni = getSNI(srcIPv4);
+                    if (sni != null) {
+                        sniRecords.put(srcIPv4, sni);
+                    }
                 }
 
                 // rDNS
-                if (dorDNS && rDNSRecords.get(destIPv4) == null) {
+                if (dorDNS.get() && rDNSRecords.get(destIPv4) == null && !isLocalIPv4(destIPv4)) {
                     var rDNS = getRDNS(destIPv4);
                     rDNSRecords.put(destIPv4, rDNS);
+                }
+                if (dorDNS.get() && rDNSRecords.get(srcIPv4) == null && !isLocalIPv4(srcIPv4)) {
+                    var rDNS = getRDNS(srcIPv4);
+                    rDNSRecords.put(srcIPv4, rDNS);
                 }
 
                 // Add stats from the packet
@@ -114,7 +143,7 @@ public class PacketParser {
 
                 break;
             case IPV6:
-                ipv6Counts++;
+                ipv6Counts.incrementAndGet();
 
                 Ipv6Packet ipv6Packet = (Ipv6Packet) ethFrame.body();
                 String destIPv6 = parseIPv6(ipv6Packet.dstIpv6Addr());
@@ -124,21 +153,37 @@ public class PacketParser {
                 var size6 = ipv6Packet.payloadLength();
 
                 //SNI
-                if (doSNI && sniRecords.get(destIPv6) == null) {
+                if (doSNI.get() && sniRecords.get(destIPv6) == null && !isLocalIPv6(destIPv6)) {
                     var sni = getSNI(destIPv6);
                     sniRecords.put(destIPv6, sni);
                 }
+                if (doSNI.get() && sniRecords.get(srcIPv6) == null && !isLocalIPv6(srcIPv6)) {
+                    var sni = getSNI(srcIPv6);
+                    sniRecords.put(srcIPv6, sni);
+                }
 
                 // rDNS
-                if (dorDNS && rDNSRecords.get(destIPv6) == null) {
+                if (dorDNS.get() && rDNSRecords.get(destIPv6) == null) {
                     var rDNS = getRDNS(destIPv6);
                     rDNSRecords.put(destIPv6, rDNS);
                 }
+                if (dorDNS.get() && rDNSRecords.get(srcIPv6) == null) {
+                    var rDNS = getRDNS(srcIPv6);
+                    rDNSRecords.put(srcIPv6, rDNS);
+                }
 
                 // Add stats from the packet
-                registerPacket(srcIPv6, destIPv6, srcMAC6, dstMAC6, size6);
+                registerPacket6(srcIPv6, destIPv6, srcMAC6, dstMAC6, size6);
                 break;
         }
+    }
+
+    private boolean isLocalIPv4(String ip) {
+        return ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.16.") || ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.19.") || ip.startsWith("172.20.") || ip.startsWith("172.21.") || ip.startsWith("172.22.") || ip.startsWith("172.23.") || ip.startsWith("172.24.") || ip.startsWith("172.25.") || ip.startsWith("172.26.") || ip.startsWith("172.27.") || ip.startsWith("172.28.") || ip.startsWith("172.29.") || ip.startsWith("172.30.") || ip.startsWith("172.31.");
+    }
+
+    private boolean isLocalIPv6(String ip) {
+        return ip.startsWith("fe80") || ip.startsWith("fd");
     }
 
     private String getRDNS(String ip) {
@@ -160,8 +205,7 @@ public class PacketParser {
             ctx.init(null, new TrustManager[]{new SniTrustManager()}, null);
             SSLSocketFactory factory = ctx.getSocketFactory();
             SSLSocket socks = (SSLSocket) factory.createSocket(ip, 443);
-
-
+            socks.setSoTimeout(1000);
             socks.startHandshake();
             var session = socks.getSession();
 
@@ -177,6 +221,10 @@ public class PacketParser {
                 names.add(name.get(1).toString());
             });
             return names;
+        } catch (SocketTimeoutException e) {
+            logger.error("Timeout while lookup SNI for {}", ip);
+            logger.debug(e);
+            return new ArrayList();
         } catch (IOException e) {
             logger.error("IO Exception while lookup SNI for {}", ip);
             logger.debug(e);
@@ -190,31 +238,176 @@ public class PacketParser {
 
     /**
      * Collect stats from a parsed packet.
-     * @param srcIPv4 src IP, can be IPv6, from pcap.
-     * @param destIPv4 dst IP, can be IPv6, from pcap.
-     * @param srcMAC src MAC from pcap.
-     * @param dstMAC dst MAC from pcap.
-     * @param size size of the packet as described in IP header.
+     *
+     * @param srcIPv4  src IP, from pcap.
+     * @param destIPv4 dst IP, from pcap.
+     * @param srcMAC   src MAC from pcap.
+     * @param dstMAC   dst MAC from pcap.
+     * @param size     size of the packet as described in IP header.
      */
     private void registerPacket(String srcIPv4, String destIPv4, String srcMAC, String dstMAC, int size) {
-        // Register the packet
-        if (localTalkers.get(srcIPv4) == null) {
-            localTalkers.put(srcIPv4, 1);
+        if (isLocalIPv4(srcIPv4)) {
+            // Source is local machine
+            if (localTalkers.get(srcIPv4) == null) {
+                localTalkers.put(srcIPv4, 1);
+            } else {
+                localTalkers.put(srcIPv4, localTalkers.get(srcIPv4) + 1);
+            }
+
+            if (localTalkersData.get(srcIPv4) == null) {
+                localTalkersData.put(srcIPv4, (long) size);
+            } else {
+                localTalkersData.put(srcIPv4, localTalkersData.get(srcIPv4) + size);
+            }
         } else {
-            localTalkers.put(srcIPv4, localTalkers.get(srcIPv4) + 1);
+            // Source is Internet machine
+            // Count data
+            if (dataCount.get(srcIPv4) == null) {
+                dataCount.put(srcIPv4, (long) size);
+            } else {
+                dataCount.put(srcIPv4, dataCount.get(srcIPv4) + size);
+            }
+
+            if (doSNI.get()) {
+                ArrayList<String> snis = sniRecords.get(srcIPv4);
+                if (snis.size() > 0) {
+                    String sni = snis.get(0);
+                    if (sniDataCount.get(sni) == null) {
+                        sniDataCount.put(sni, (long) size);
+                    } else {
+                        sniDataCount.put(sni, sniDataCount.get(sni) + size);
+                    }
+                }
+            }
         }
 
-        // Count data
-        if (dataCount.get(destIPv4) == null) {
-            dataCount.put(destIPv4, (long) size);
+        if (isLocalIPv4(destIPv4)) {
+            // destination is local machine
+            // Source is local machine
+            if (localTalkers.get(destIPv4) == null) {
+                localTalkers.put(destIPv4, 1);
+            } else {
+                localTalkers.put(destIPv4, localTalkers.get(destIPv4) + 1);
+            }
+
+            if (localTalkersData.get(destIPv4) == null) {
+                localTalkersData.put(destIPv4, (long) size);
+            } else {
+                localTalkersData.put(destIPv4, localTalkersData.get(destIPv4) + size);
+            }
         } else {
-            dataCount.put(destIPv4, dataCount.get(destIPv4) + size);
+            // destination is internet node
+            // Count data
+            if (dataCount.get(destIPv4) == null) {
+                dataCount.put(destIPv4, (long) size);
+            } else {
+                dataCount.put(destIPv4, dataCount.get(destIPv4) + size);
+            }
+
+            if (doSNI.get()) {
+                ArrayList<String> snis = sniRecords.get(destIPv4);
+                if (snis.size() > 0) {
+                    String sni = snis.get(0);
+                    if (sniDataCount.get(sni) == null) {
+                        sniDataCount.put(sni, (long) size);
+                    } else {
+                        sniDataCount.put(sni, sniDataCount.get(sni) + size);
+                    }
+                }
+            }
         }
 
         // Register the MAC address
         // ASSUMPTION: An IP address will only associate with one MAC address.
         addressResolution.putIfAbsent(srcIPv4, srcMAC);
         addressResolution.putIfAbsent(destIPv4, dstMAC);
+    }
+
+    /**
+     * Collect stats from a parsed packet.
+     *
+     * @param srcIPv6  src IP, from pcap.
+     * @param destIPv6 dst IP, from pcap.
+     * @param srcMAC   src MAC from pcap.
+     * @param dstMAC   dst MAC from pcap.
+     * @param size     size of the packet as described in IP header.
+     */
+    private void registerPacket6(String srcIPv6, String destIPv6, String srcMAC, String dstMAC, int size) {
+        if (isLocalIPv4(srcIPv6)) {
+            // Source is local machine
+            if (localTalkers.get(srcIPv6) == null) {
+                localTalkers.put(srcIPv6, 1);
+            } else {
+                localTalkers.put(srcIPv6, localTalkers.get(srcIPv6) + 1);
+            }
+
+            if (localTalkersData.get(srcIPv6) == null) {
+                localTalkersData.put(srcIPv6, (long) size);
+            } else {
+                localTalkersData.put(srcIPv6, localTalkersData.get(srcIPv6) + size);
+            }
+        } else {
+            // Source is Internet machine
+            // Count data
+            if (dataCount.get(srcIPv6) == null) {
+                dataCount.put(srcIPv6, (long) size);
+            } else {
+                dataCount.put(srcIPv6, dataCount.get(srcIPv6) + size);
+            }
+
+            if (doSNI.get()) {
+                ArrayList<String> snis = sniRecords.get(srcIPv6);
+                if (snis.size() > 0) {
+                    String sni = snis.get(0);
+                    if (sniDataCount.get(sni) == null) {
+                        sniDataCount.put(sni, (long) size);
+                    } else {
+                        sniDataCount.put(sni, sniDataCount.get(sni) + size);
+                    }
+                }
+            }
+        }
+
+        if (isLocalIPv4(destIPv6)) {
+            // destination is local machine
+            // Source is local machine
+            if (localTalkers.get(destIPv6) == null) {
+                localTalkers.put(destIPv6, 1);
+            } else {
+                localTalkers.put(destIPv6, localTalkers.get(destIPv6) + 1);
+            }
+
+            if (localTalkersData.get(destIPv6) == null) {
+                localTalkersData.put(destIPv6, (long) size);
+            } else {
+                localTalkersData.put(destIPv6, localTalkersData.get(destIPv6) + size);
+            }
+        } else {
+            // destination is internet node
+            // Count data
+            if (dataCount.get(destIPv6) == null) {
+                dataCount.put(destIPv6, (long) size);
+            } else {
+                dataCount.put(destIPv6, dataCount.get(destIPv6) + size);
+            }
+
+            if (doSNI.get()) {
+                ArrayList<String> snis = sniRecords.get(destIPv6);
+                if (snis.size() > 0) {
+                    String sni = snis.get(0);
+                    if (sniDataCount.get(sni) == null) {
+                        sniDataCount.put(sni, (long) size);
+                    } else {
+                        sniDataCount.put(sni, sniDataCount.get(sni) + size);
+                    }
+                }
+            }
+        }
+
+        // Register the MAC address
+        // ASSUMPTION: An IP address will only associate with one MAC address.
+        addressResolution.putIfAbsent(srcIPv6, srcMAC);
+        addressResolution.putIfAbsent(destIPv6, dstMAC);
     }
 
     private String parseIPv6(byte[] ipAddr) {
@@ -248,13 +441,13 @@ public class PacketParser {
         var d = String.format("%02X", mac[3]);
         var e = String.format("%02X", mac[4]);
         var f = String.format("%02X", mac[5]);
-        return String.format("%s:%s:%s:%s:%s:%s", a,b,c,d,e,f);
+        return String.format("%s:%s:%s:%s:%s:%s", a, b, c, d, e, f);
     }
 
     /**
      * Our insecure trust manager. Trust everything.
      */
-    private class SniTrustManager implements X509TrustManager {
+    private static class SniTrustManager implements X509TrustManager {
 
         @Override
         public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
@@ -272,4 +465,122 @@ public class PacketParser {
         }
     }
 
+    /**
+     * Local top speakers.
+     *
+     * @return [Top packet speaker IP; MAC; Packet counts; Top data speak IP; MAC; Packet counts.]
+     */
+    public ArrayList<String> getLocalTopSpeaker() {
+        ArrayList<String> topSpeakers = new ArrayList<>();
+        localTalkers.entrySet().stream().max(Comparator.comparingInt(HashMap.Entry::getValue));
+        var topPacket = localTalkers.entrySet().stream().max(Comparator.comparingInt(HashMap.Entry::getValue)).get();
+        var topData = localTalkersData.entrySet().stream().max(Comparator.comparingLong(HashMap.Entry::getValue)).get();
+        topSpeakers.add(topPacket.getKey());
+        topSpeakers.add(addressResolution.get(topPacket.getKey()));
+        topSpeakers.add(topPacket.getValue().toString());
+        topSpeakers.add(topData.getKey());
+        topSpeakers.add(addressResolution.get(topData.getKey()));
+        topSpeakers.add(topData.getValue().toString());
+
+        return topSpeakers;
+    }
+
+    /**
+     * Get top 10 destinations information
+     *
+     * @return [[Top 10 dest ips] : [Top 10 dest data] : [Top 10 dest SNIs] : [Top10 dest rDNS]]
+     */
+    public ArrayList<ArrayList<String>> getTopDest() {
+        ArrayList<String> topDest = new ArrayList<>();
+        ArrayList<String> topData = new ArrayList<>();
+        ArrayList<String> topSNI = new ArrayList<>();
+        ArrayList<String> topRDNS = new ArrayList<>();
+        ArrayList<ArrayList<String>> resp = new ArrayList<>();
+
+        ArrayList<Long> traffic = new ArrayList<>();
+        for (Long data : dataCount.values()) {
+            traffic.add(data);
+        }
+        // sort data in descending order
+        traffic.sort(Comparator.reverseOrder());
+
+        // get top 10 / most ips
+        int topsize = 10;
+        if (dataCount.size() < 10) {
+            topsize = dataCount.size();
+        }
+        for (int i = 0; i < topsize; i++) {
+            var data = traffic.get(i);
+            for (String ip : dataCount.keySet()) {
+                if (dataCount.get(ip) == data) {
+                    topDest.add(ip);
+                    topData.add(String.valueOf(data));
+                    if (dorDNS.get()) {
+                        topRDNS.add(rDNSRecords.get(ip));
+                    }
+                    if (doSNI.get()) {
+                        ArrayList snis = sniRecords.get(ip);
+                        if (snis.size() > 0) {
+                            topSNI.add(snis.get(0).toString());
+                        } else {
+                            // Faild to do sni. Empty Arraylist.
+                            topSNI.add("Unknown");
+                        }
+                    }
+                }
+            }
+        }
+
+        resp.add(topDest);
+        resp.add(topData);
+        resp.add(topSNI);
+        resp.add(topRDNS);
+        return resp;
+    }
+
+    /**
+     * Get top 10 SNI ranking of the pcap file.
+     *
+     * @return ["SNI NAME: Data (bytes)"]
+     */
+    public ArrayList<String> getSNIRanking() {
+        ArrayList<String> topSNI = new ArrayList<>();
+        ArrayList<Long> traffic = new ArrayList<>();
+        for (Long data : sniDataCount.values()) {
+            traffic.add(data);
+        }
+        // sort data in descending order
+        traffic.sort(Comparator.reverseOrder());
+
+        // get top 10 / most contained snis
+        int topsize = 10;
+        if (sniDataCount.size() < 10) {
+            topsize = sniDataCount.size();
+        }
+        for (int i = 0; i < topsize; i++) {
+            var data = traffic.get(i);
+            for (String sni : sniDataCount.keySet()) {
+                if (sniDataCount.get(sni) == data) {
+                    topSNI.add(sni + ": " + data + " (bytes)");
+                }
+            }
+        }
+        return topSNI;
+    }
+
+    public Integer getIpv4Counts() {
+        return ipv4Counts.get();
+    }
+
+    public Integer getIpv6Counts() {
+        return ipv6Counts.get();
+    }
+
+    public void setDorDNS(Boolean dorDNS) {
+        this.dorDNS = new AtomicBoolean(dorDNS);
+    }
+
+    public void setDoSNI(Boolean doSNI) {
+        this.doSNI = new AtomicBoolean(doSNI);
+    }
 }

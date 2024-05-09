@@ -50,6 +50,7 @@ public class HelloController {
         homeController.setrDNS(dorDNS);
         homeController.setSNI(doSNI);
         homeController.setStage(appStage);
+        homeController.setParser(parser);
         appStage.setScene(homeScene);
     }
 }

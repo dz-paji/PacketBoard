@@ -1,58 +1,88 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<?import javafx.scene.control.Accordion?>
+<?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Menu?>
 <?import javafx.scene.control.MenuBar?>
 <?import javafx.scene.control.MenuItem?>
 <?import javafx.scene.control.ScrollPane?>
-<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Pane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Text?>
 
-<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/19" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.packetboard.packetboard.HomeController">
-   <children>
-      <BorderPane prefHeight="400.0" prefWidth="600.0">
-         <top>
-            <HBox prefHeight="25.0" prefWidth="600.0" BorderPane.alignment="CENTER">
-               <children>
-                  <MenuBar prefHeight="25.0" prefWidth="605.0">
-                    <menus>
-                      <Menu mnemonicParsing="false" text="File">
-                        <items>
-                              <MenuItem mnemonicParsing="false" text="Open..." />
-                          <MenuItem mnemonicParsing="false" text="Close" />
-                        </items>
-                      </Menu>
-                        <Menu mnemonicParsing="false" text="Settings">
-                          <items>
-                            <MenuItem mnemonicParsing="false" text="Action 1" />
-                          </items>
-                        </Menu>
-                      <Menu mnemonicParsing="false" text="Help">
-                        <items>
-                          <MenuItem mnemonicParsing="false" text="About" />
-                        </items>
-                      </Menu>
-                    </menus>
-                  </MenuBar>
-               </children>
-            </HBox>
-         </top>
+<Pane prefHeight="800.0" prefWidth="1200.0" xmlns="http://javafx.com/javafx/19" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.packetboard.packetboard.HomeController">
+    <children>
+        <BorderPane prefHeight="800.0" prefWidth="1200.0">
+            <top>
+                <HBox prefHeight="25.0" BorderPane.alignment="CENTER">
+                    <children>
+                        <MenuBar prefHeight="25.0" prefWidth="605.0">
+                            <menus>
+                                <Menu mnemonicParsing="false" text="File">
+                                    <items>
+                                        <MenuItem mnemonicParsing="false" onAction="#openNewFile" text="Open..." />
+                                    </items>
+                                </Menu>
+                            </menus>
+                        </MenuBar>
+                    </children>
+                </HBox>
+            </top>
          <center>
-            <ScrollPane prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
-              <content>
-                <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="373.0" prefWidth="598.0">
-                     <children>
-                        <BorderPane prefHeight="374.0" prefWidth="600.0">
-                           <top>
-                              <VBox fx:id="graphsBox" prefHeight="374.0" prefWidth="600.0" BorderPane.alignment="CENTER" />
-                           </top>
-                        </BorderPane>
-                     </children>
-                  </AnchorPane>
-              </content>
-            </ScrollPane>
+                <ScrollPane prefHeight="771.0" prefWidth="1200.0" BorderPane.alignment="CENTER">
+               <content>
+                  <BorderPane prefHeight="772.0" prefWidth="1198.0">
+                     <center>
+                        <Accordion fx:id="homeAccordion" BorderPane.alignment="CENTER">
+                          <panes>
+                            <TitledPane animated="false" prefHeight="347.0" prefWidth="620.0" text="Local top speaker">
+                                 <content>
+                                    <VBox prefHeight="200.0" prefWidth="100.0">
+                                       <children>
+                                          <HBox prefHeight="23.0" prefWidth="578.0">
+                                             <children>
+                                                <Text strokeType="OUTSIDE" strokeWidth="0.0" text="Local top speaker by packet counts: " />
+                                                <Label fx:id="packetTopIP" text="IP" />
+                                                <Label fx:id="packetTopMAC" text="MAC" />
+                                                <Label fx:id="packetTopPacket" text="Packets" />
+                                             </children>
+                                          </HBox>
+                                          <HBox prefHeight="28.0" prefWidth="578.0">
+                                             <children>
+                                                <Text strokeType="OUTSIDE" strokeWidth="0.0" text="Local top speaker by data sent/received: " />
+                                                <Label fx:id="dataTopIP" text="IP" />
+                                                <Label fx:id="dataTopMAC" text="MAC" />
+                                                <Label fx:id="dataTopData" text="Data" />
+                                             </children>
+                                          </HBox>
+                                       </children>
+                                    </VBox>
+                                 </content>
+                            </TitledPane>
+                            <TitledPane animated="false" text="Top destinations by IP address">
+                                 <content>
+                                    <VBox fx:id="topDestBox" prefHeight="200.0" prefWidth="100.0" />
+                                 </content>
+                            </TitledPane>
+                            <TitledPane animated="false" text="IP analysis">
+                                 <content>
+                                    <VBox fx:id="IPProtocolBox" prefHeight="200.0" prefWidth="100.0">
+                                       <children>
+                                          <Text strokeType="OUTSIDE" strokeWidth="0.0" text="IPv4 / IPv6 Packets %" />
+                                       </children>
+                                    </VBox>
+                                 </content>
+                            </TitledPane>
+                          </panes>
+                        </Accordion>
+                     </center>
+                  </BorderPane>
+               </content>
+                </ScrollPane>
          </center>
-      </BorderPane>
-   </children>
-</AnchorPane>
+        </BorderPane>
+    </children>
+</Pane>
