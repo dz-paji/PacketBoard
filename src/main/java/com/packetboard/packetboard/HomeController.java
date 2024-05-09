@@ -63,7 +63,7 @@ public class HomeController {
             Label dataLabel = new Label("(" + topData.get(i) + " bytes) ");
             thisDst.getChildren().add(dataLabel);
             if (doSNI) {
-                Label sniLabel = new Label("SNI: " + topSNI.get(i));
+                Label sniLabel = new Label("Domain Name: " + topSNI.get(i));
                 thisDst.getChildren().add(sniLabel);
             }
             if (dorDNS) {

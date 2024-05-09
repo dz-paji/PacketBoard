@@ -23,7 +23,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class PacketParser {
-    private Pcap data;
     private final ConcurrentHashMap<String, Integer> localTalkers = new ConcurrentHashMap<>(); // IP: Packet count.
     private final ConcurrentHashMap<String, Long> localTalkersData = new ConcurrentHashMap<>(); // IP: data(bytes)
     private final ConcurrentHashMap<String, String> addressResolution = new ConcurrentHashMap<>(); // IP: MAC
@@ -31,9 +30,9 @@ public class PacketParser {
     private final ConcurrentHashMap<String, ArrayList> sniRecords = new ConcurrentHashMap<>(); // dstIP: Arraylist(SNI(domain name))
     private final ConcurrentHashMap<String, String> rDNSRecords = new ConcurrentHashMap<>(); // IP: rDNS
     private final ConcurrentHashMap<String, Long> sniDataCount = new ConcurrentHashMap<>(); // SNI: Data(bytes)
-    private AtomicInteger ipv4Counts = new AtomicInteger(0);
-    private AtomicInteger ipv6Counts = new AtomicInteger(0);
-    private Logger logger = LogManager.getLogger(PacketParser.class);
+    private final AtomicInteger ipv4Counts = new AtomicInteger(0);
+    private final AtomicInteger ipv6Counts = new AtomicInteger(0);
+    private final Logger logger = LogManager.getLogger(PacketParser.class);
     private AtomicBoolean doSNI, dorDNS = new AtomicBoolean(false);
 
     /**
@@ -62,12 +61,12 @@ public class PacketParser {
             // register settings
             this.doSNI = new AtomicBoolean(doSNI);
             this.dorDNS = new AtomicBoolean(dorDNS);
-            data = Pcap.fromFile(fileName);
+            Pcap data = Pcap.fromFile(fileName);
             // check link-type.
             var linkType = data.hdr().network();
 
             // Create thread pool
-            ExecutorService executors = Executors.newFixedThreadPool(32);
+            ExecutorService executors = Executors.newFixedThreadPool(64);
             ArrayList<Future> futures = new ArrayList<>();
             data.packets().forEach(packet -> {
                 futures.add(executors.submit(() -> {

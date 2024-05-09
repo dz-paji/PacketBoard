@@ -19,7 +19,7 @@
             <top>
                 <HBox prefHeight="25.0" BorderPane.alignment="CENTER">
                     <children>
-                        <MenuBar prefHeight="25.0" prefWidth="605.0">
+                        <MenuBar prefHeight="25.0" prefWidth="1225.0">
                             <menus>
                                 <Menu mnemonicParsing="false" text="File">
                                     <items>
@@ -40,7 +40,7 @@
                           <panes>
                             <TitledPane animated="false" prefHeight="347.0" prefWidth="620.0" text="Local top speaker">
                                  <content>
-                                    <VBox prefHeight="200.0" prefWidth="100.0">
+                                    <VBox prefHeight="200.0">
                                        <children>
                                           <HBox prefHeight="23.0" prefWidth="578.0">
                                              <children>

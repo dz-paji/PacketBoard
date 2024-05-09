@@ -21,7 +21,7 @@
                         <Font size="29.0" />
                      </font>
                   </Label>
-                  <HBox prefHeight="26.0" prefWidth="100.0">
+                  <HBox prefHeight="26.0" prefWidth="110.0">
                      <children>
                         <Button fx:id="loadButton" mnemonicParsing="false" onAction="#onImportBtnClick" prefHeight="25.0" prefWidth="105.0" text="Load pcap" textAlignment="CENTER" />
                      </children>
@@ -29,17 +29,17 @@
                         <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
                      </padding>
                   </HBox>
-                  <HBox prefHeight="18.0" prefWidth="100.0">
+                  <HBox prefHeight="27.0" prefWidth="120.0">
                      <padding>
                         <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
                      </padding>
                      <children>
-                        <CheckBox fx:id="sniBox" mnemonicParsing="false" text="SNI Lookup" />
+                        <CheckBox fx:id="sniBox" mnemonicParsing="false" prefHeight="17.0" prefWidth="139.0" text="Domain Lookup" />
                      </children>
                   </HBox>
-                  <HBox prefHeight="20.0" prefWidth="100.0">
+                  <HBox prefHeight="27.0" prefWidth="120.0">
                      <children>
-                        <CheckBox fx:id="rdnsBox" mnemonicParsing="false" text="rDNS Lookup" />
+                        <CheckBox fx:id="rdnsBox" mnemonicParsing="false" prefHeight="17.0" prefWidth="134.0" text="rDNS Lookup" />
                      </children>
                      <padding>
                         <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
