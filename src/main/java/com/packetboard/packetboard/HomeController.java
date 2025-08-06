@@ -60,7 +60,7 @@ public class HomeController {
             HBox thisDst = new HBox();
             Label destLabel = new Label((i + 1) + ": " + topDest.get(i) + " ");
             thisDst.getChildren().add(destLabel);
-            Label dataLabel = new Label("(" + topData.get(i) + " bytes) ");
+            Label dataLabel = new Label(" " + topData.get(i));
             thisDst.getChildren().add(dataLabel);
             if (doSNI) {
                 Label sniLabel = new Label("Domain Name: " + topSNI.get(i));

@@ -35,6 +35,8 @@ public class PacketParser {
     private final Logger logger = LogManager.getLogger(PacketParser.class);
     private AtomicBoolean doSNI, dorDNS = new AtomicBoolean(false);
 
+    private Boolean localTrafficStats = true; // Collect local traffic stats. TODO: Bind to JavaFX.
+
     /**
      * Header length of each protocol.
      */
@@ -258,6 +260,15 @@ public class PacketParser {
             } else {
                 localTalkersData.put(srcIPv4, localTalkersData.get(srcIPv4) + size);
             }
+
+            if (localTrafficStats) {
+                // Count local networking data with localTalkersData flag set.
+                if (dataCount.get(srcIPv4) == null) {
+                    dataCount.put(srcIPv4, (long) size);
+                } else {
+                    dataCount.put(srcIPv4, dataCount.get(srcIPv4) + size);
+                }
+            }
         } else {
             // Source is Internet machine
             // Count data
@@ -293,6 +304,15 @@ public class PacketParser {
                 localTalkersData.put(destIPv4, (long) size);
             } else {
                 localTalkersData.put(destIPv4, localTalkersData.get(destIPv4) + size);
+            }
+
+            if (localTrafficStats) {
+                // Count local networking data with localTalkersData flag set.
+                if (dataCount.get(destIPv4) == null) {
+                    dataCount.put(destIPv4, (long) size);
+                } else {
+                    dataCount.put(destIPv4, dataCount.get(destIPv4) + size);
+                }
             }
         } else {
             // destination is internet node
@@ -345,6 +365,15 @@ public class PacketParser {
             } else {
                 localTalkersData.put(srcIPv6, localTalkersData.get(srcIPv6) + size);
             }
+
+            if (localTrafficStats) {
+                // Count local networking data with localTalkersData flag set.
+                if (dataCount.get(srcIPv6) == null) {
+                    dataCount.put(srcIPv6, (long) size);
+                } else {
+                    dataCount.put(srcIPv6, dataCount.get(srcIPv6) + size);
+                }
+            }
         } else {
             // Source is Internet machine
             // Count data
@@ -356,7 +385,7 @@ public class PacketParser {
 
             if (doSNI.get()) {
                 ArrayList<String> snis = sniRecords.get(srcIPv6);
-                if (snis.size() > 0) {
+                if (!snis.isEmpty()) {
                     String sni = snis.get(0);
                     if (sniDataCount.get(sni) == null) {
                         sniDataCount.put(sni, (long) size);
@@ -380,6 +409,15 @@ public class PacketParser {
                 localTalkersData.put(destIPv6, (long) size);
             } else {
                 localTalkersData.put(destIPv6, localTalkersData.get(destIPv6) + size);
+            }
+
+            if (localTrafficStats) {
+                // Count local networking data with localTalkersData flag set.
+                if (dataCount.get(destIPv6) == null) {
+                    dataCount.put(destIPv6, (long) size);
+                } else {
+                    dataCount.put(destIPv6, dataCount.get(destIPv6) + size);
+                }
             }
         } else {
             // destination is internet node
@@ -510,10 +548,32 @@ public class PacketParser {
         }
         for (int i = 0; i < topsize; i++) {
             var data = traffic.get(i);
+            int dataUnitTracker = 0; // 0: bytes, 1: KB, 2: MB, 3: GB
+            double kb = (double) data; // convert and store to double for accurate division
+            while (kb >= 1024 && dataUnitTracker < 3) {
+                kb /= 1024; // convert to KB
+                dataUnitTracker++;
+            }
+            kb = Math.round(kb * 100.0) / 100.0; // round to 2 decimal places
+            var dataUnit = "bytes"; // default unit
+            switch (dataUnitTracker) {
+                case 1 -> {
+                    dataUnit = "KB";
+                }
+                case 2 -> {
+                    dataUnit = "MB";
+                }
+                case 3 -> {
+                    dataUnit = "GB";
+                }
+                default -> {
+                    dataUnit = "bytes";
+                }
+            }
             for (String ip : dataCount.keySet()) {
-                if (dataCount.get(ip) == data) {
+                if (Objects.equals(dataCount.get(ip), data)) {
                     topDest.add(ip);
-                    topData.add(String.valueOf(data));
+                    topData.add(kb + " " + dataUnit);
                     if (dorDNS.get()) {
                         topRDNS.add(rDNSRecords.get(ip));
                     }
@@ -529,7 +589,7 @@ public class PacketParser {
                 }
             }
         }
-
+        System.out.println("top data: " + topData);
         resp.add(topDest);
         resp.add(topData);
         resp.add(topSNI);
