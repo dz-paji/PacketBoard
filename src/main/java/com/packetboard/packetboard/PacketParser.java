@@ -1,9 +1,8 @@
 package com.packetboard.packetboard;
 
-import com.packetboard.packetboard.Parser.EthernetFrame;
-import com.packetboard.packetboard.Parser.Ipv4Packet;
-import com.packetboard.packetboard.Parser.Ipv6Packet;
-import com.packetboard.packetboard.Parser.Pcap;
+import com.packetboard.packetboard.Parser.*;
+
+import io.kaitai.struct.ByteBufferKaitaiStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -49,6 +48,26 @@ public class PacketParser {
         public static final int ARP = 28;
         public static final int RAW = 0; // Begins with IPv4/IPv6
         public static final int IEEE802_11 = 22; // WIFI
+    }
+
+    /**
+     * TCP protocol specifications
+     */
+    private static final class TCP {
+        /**
+         * TCP protocol number.
+         */
+        public static final int Proto = 6;
+    }
+
+    /**
+     * TLS protocol specifications
+     */
+    private static final class TLS {
+        /**
+         * TLS protocol number.
+         */
+        public static final int Handshake = 22; // TLS Handshake protocol number
     }
 
     /**
@@ -109,10 +128,10 @@ public class PacketParser {
                 ipv4Counts.incrementAndGet();
 
                 Ipv4Packet ipv4Packet = (Ipv4Packet) ethFrame.body();
-                String destIPv4 = parseIPv4(ipv4Packet.dstIpAddr());
-                String srcIPv4 = parseIPv4(ipv4Packet.srcIpAddr());
-                String srcMAC = parseMac(ethFrame.srcMac());
-                String dstMAC = parseMac(ethFrame.dstMac());
+                String destIPv4 = parseIPv4Address(ipv4Packet.dstIpAddr());
+                String srcIPv4 = parseIPv4Address(ipv4Packet.srcIpAddr());
+                String srcMAC = parseMacAddress(ethFrame.srcMac());
+                String dstMAC = parseMacAddress(ethFrame.dstMac());
                 var size = ipv4Packet.totalLength();
 
                 // SNI
@@ -142,6 +161,8 @@ public class PacketParser {
                 // Add stats from the packet
                 registerPacket(srcIPv4, destIPv4, srcMAC, dstMAC, size);
 
+                parseIPv4Packet(ipv4Packet);
+
                 break;
             case IPV6:
                 ipv6Counts.incrementAndGet();
@@ -149,8 +170,8 @@ public class PacketParser {
                 Ipv6Packet ipv6Packet = (Ipv6Packet) ethFrame.body();
                 String destIPv6 = parseIPv6(ipv6Packet.dstIpv6Addr());
                 String srcIPv6 = parseIPv6(ipv6Packet.srcIpv6Addr());
-                String srcMAC6 = parseMac(ethFrame.srcMac());
-                String dstMAC6 = parseMac(ethFrame.dstMac());
+                String srcMAC6 = parseMacAddress(ethFrame.srcMac());
+                String dstMAC6 = parseMacAddress(ethFrame.dstMac());
                 var size6 = ipv6Packet.payloadLength();
 
                 //SNI
@@ -176,6 +197,16 @@ public class PacketParser {
                 // Add stats from the packet
                 registerPacket6(srcIPv6, destIPv6, srcMAC6, dstMAC6, size6);
                 break;
+        }
+    }
+
+    private void parseIPv4Packet(Ipv4Packet ipv4Packet) {
+        // We want to parse TLS Client Hello for fingerprinting.
+        switch (ipv4Packet.protocol()) {
+            case TCP.Proto:
+                // TCP
+                ProtocolBody ipBody = ipv4Packet.body();
+                TcpSegment tcpSegment = (TcpSegment) ipBody.body();
         }
     }
 
@@ -459,7 +490,7 @@ public class PacketParser {
         return builder.toString();
     }
 
-    private String parseIPv4(byte[] srcIpAddr) {
+    private String parseIPv4Address(byte[] srcIpAddr) {
         var a = String.format("%02X", srcIpAddr[0]);
         var b = String.format("%02X", srcIpAddr[1]);
         var c = String.format("%02X", srcIpAddr[2]);
@@ -471,7 +502,7 @@ public class PacketParser {
         return String.format("%d.%d.%d.%d", a_int, b_int, c_int, d_int);
     }
 
-    private String parseMac(byte[] mac) {
+    private String parseMacAddress(byte[] mac) {
         var a = String.format("%02X", mac[0]);
         var b = String.format("%02X", mac[1]);
         var c = String.format("%02X", mac[2]);
@@ -589,7 +620,6 @@ public class PacketParser {
                 }
             }
         }
-        System.out.println("top data: " + topData);
         resp.add(topDest);
         resp.add(topData);
         resp.add(topSNI);
