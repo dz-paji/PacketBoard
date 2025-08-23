@@ -67,7 +67,7 @@ public class PacketParser {
         /**
          * TLS protocol number.
          */
-        public static final int Handshake = 22; // TLS Handshake protocol number
+        public static final byte Handshake = 22; // TLS Handshake protocol number in byte
     }
 
     /**
@@ -207,6 +207,25 @@ public class PacketParser {
                 // TCP
                 ProtocolBody ipBody = ipv4Packet.body();
                 TcpSegment tcpSegment = (TcpSegment) ipBody.body();
+                byte[] applicationData = tcpSegment.body();
+                if (applicationData.length > 0) {
+                    // Check if this is a TLS handshake
+                    if (applicationData[0] == TLS.Handshake) {
+                        // This is a TLS handshake, we can parse it.
+                        int tlsHeaderLength = 5; // 1 byte for type, 2 bytes for version, 2 bytes for length
+                        byte[] handshakeData = Arrays.copyOfRange(applicationData, tlsHeaderLength, applicationData.length);
+                        TlsClientHello clientHello = new TlsClientHello(new ByteBufferKaitaiStream(handshakeData));
+                        var protocol = "t";
+                        System.out.println("client hello with tls version: " + clientHello.version().toString());
+                        String tlsVersion = switch (clientHello.version().toString()) {
+                            case "0x0301" -> "TLS 1.0";
+                            case "0x0302" -> "TLS 1.1";
+                            case "0x0303" -> "TLS 1.2";
+                            case "0x0304" -> "TLS 1.3";
+                            default -> "Unknown TLS version";
+                        };
+                    }
+                }
         }
     }
 
